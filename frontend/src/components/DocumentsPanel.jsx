@@ -1,7 +1,7 @@
 import { useState, useRef } from 'react'
 import { api } from '../api'
 
-export default function DocumentsPanel({ documents, onRefresh }) {
+export default function DocumentsPanel({ documents, onRefresh, onClose }) {
   const [title, setTitle] = useState('')
   const [text, setText] = useState('')
   const [uploading, setUploading] = useState(false)
@@ -46,11 +46,23 @@ export default function DocumentsPanel({ documents, onRefresh }) {
   }
 
   return (
-    <aside className="w-72 flex-shrink-0 bg-white border-r border-gray-200 flex flex-col overflow-hidden">
+    <aside className="w-72 h-full bg-white border-r border-gray-200 flex flex-col overflow-hidden">
+      {/* Cabecera del panel con botón cerrar en mobile */}
       <div className="p-4 border-b border-gray-100">
-        <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">
-          Documentos
-        </h2>
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
+            Documentos
+          </h2>
+          <button
+            className="md:hidden p-1 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors"
+            onClick={onClose}
+            aria-label="Cerrar panel"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+              <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
+          </button>
+        </div>
 
         <form onSubmit={handleUpload} className="space-y-2">
           <input
@@ -122,11 +134,7 @@ export default function DocumentsPanel({ documents, onRefresh }) {
                 className="flex-shrink-0 text-gray-300 hover:text-red-400 disabled:opacity-40 transition-colors mt-0.5"
                 title="Eliminar"
               >
-                {deletingId === doc.id ? (
-                  <Spinner size={14} />
-                ) : (
-                  <TrashIcon />
-                )}
+                {deletingId === doc.id ? <Spinner size={14} /> : <TrashIcon />}
               </button>
             </div>
           ))
