@@ -1,10 +1,11 @@
 const BASE = (import.meta.env.VITE_API_URL ?? 'http://localhost:8000').replace(/\/$/, '')
 
-async function req(method, path, body) {
+async function req(method, path, body, signal) {
   const res = await fetch(`${BASE}${path}`, {
     method,
     headers: body ? { 'Content-Type': 'application/json' } : {},
     body: body ? JSON.stringify(body) : undefined,
+    signal,
   })
   if (!res.ok) {
     const err = await res.json().catch(() => ({ detail: res.statusText }))
@@ -15,7 +16,17 @@ async function req(method, path, body) {
 }
 
 export const api = {
-  health: () => req('GET', '/health'),
+  // timeoutMs: aborta la petición si no responde en ese tiempo
+  health: async (timeoutMs) => {
+    if (!timeoutMs) return req('GET', '/health')
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), timeoutMs)
+    try {
+      return await req('GET', '/health', null, controller.signal)
+    } finally {
+      clearTimeout(timer)
+    }
+  },
   listDocuments: () => req('GET', '/documents'),
   createDocument: (title, text) => req('POST', '/documents', { title, text }),
   deleteDocument: (id) => req('DELETE', `/documents/${id}`),

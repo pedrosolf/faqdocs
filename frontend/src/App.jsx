@@ -1,20 +1,58 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { api } from './api'
 import DocumentsPanel from './components/DocumentsPanel'
 import ChatPanel from './components/ChatPanel'
 
+// Estados del servidor
+// 'checking'  — primer intento en curso
+// 'waking'    — no respondió en 3s, reintentando cada 5s
+// 'online'    — respondió OK
+// 'error'     — falló de forma definitiva (no debería pasar con Render)
+
+const FIRST_TIMEOUT = 3000   // si no responde en 3s → estado "waking"
+const RETRY_INTERVAL = 5000  // reintentar cada 5s mientras duerme
+
 export default function App() {
+  const [serverStatus, setServerStatus] = useState('checking')
   const [health, setHealth] = useState(null)
-  const [backendError, setBackendError] = useState(false)
   const [documents, setDocuments] = useState([])
   const [drawerOpen, setDrawerOpen] = useState(false)
+  const retryTimer = useRef(null)
 
   useEffect(() => {
-    api.health()
-      .then(h => { setHealth(h); setBackendError(false) })
-      .catch(() => setBackendError(true))
-    loadDocuments()
+    pingServer()
+    return () => clearTimeout(retryTimer.current)
   }, [])
+
+  async function pingServer() {
+    try {
+      const h = await api.health(FIRST_TIMEOUT)
+      onOnline(h)
+    } catch {
+      // No respondió en 3s — Render está durmiendo
+      setServerStatus('waking')
+      scheduleRetry()
+    }
+  }
+
+  function scheduleRetry() {
+    retryTimer.current = setTimeout(async () => {
+      try {
+        // Sin timeout en los reintentos — Render puede tardar hasta ~30s
+        const h = await api.health()
+        onOnline(h)
+      } catch {
+        scheduleRetry()
+      }
+    }, RETRY_INTERVAL)
+  }
+
+  function onOnline(h) {
+    clearTimeout(retryTimer.current)
+    setHealth(h)
+    setServerStatus('online')
+    loadDocuments()
+  }
 
   async function loadDocuments() {
     try {
@@ -22,12 +60,13 @@ export default function App() {
     } catch {}
   }
 
+  const isWaking = serverStatus === 'checking' || serverStatus === 'waking'
+
   return (
     <div className="flex flex-col h-screen bg-slate-50">
       {/* Header */}
       <header className="bg-white border-b border-gray-200 px-4 py-3 flex items-center justify-between flex-shrink-0 z-20 shadow-sm">
         <div className="flex items-center gap-2.5">
-          {/* Botón hamburguesa — solo mobile */}
           <button
             className="md:hidden p-1.5 rounded-lg hover:bg-gray-100 transition-colors mr-1"
             onClick={() => setDrawerOpen(o => !o)}
@@ -44,7 +83,6 @@ export default function App() {
           </div>
           <span className="font-semibold text-gray-900 text-sm">FaqDocs</span>
 
-          {/* Contador de docs — mobile */}
           {documents.length > 0 && (
             <span className="md:hidden text-xs text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-full font-medium">
               {documents.length} doc{documents.length !== 1 ? 's' : ''}
@@ -53,12 +91,19 @@ export default function App() {
         </div>
 
         <div className="flex items-center gap-3 text-xs text-gray-500">
-          {backendError ? (
-            <span className="flex items-center gap-1 text-red-500">
-              <span className="w-2 h-2 bg-red-400 rounded-full inline-block" />
-              Sin conexión
+          {serverStatus === 'checking' && (
+            <span className="flex items-center gap-1.5 text-gray-400">
+              <SpinnerIcon size={12} />
+              conectando…
             </span>
-          ) : health ? (
+          )}
+          {serverStatus === 'waking' && (
+            <span className="flex items-center gap-1.5 text-amber-500">
+              <SpinnerIcon size={12} className="text-amber-500" />
+              despertando servidor…
+            </span>
+          )}
+          {serverStatus === 'online' && (
             <>
               <span className="flex items-center gap-1">
                 <span className="w-2 h-2 bg-emerald-400 rounded-full inline-block" />
@@ -71,15 +116,15 @@ export default function App() {
                 {health.documents} doc{health.documents !== 1 ? 's' : ''} · {health.chunks} chunks
               </span>
             </>
-          ) : (
-            <span className="text-gray-400">conectando…</span>
           )}
         </div>
       </header>
 
+      {/* Banner de wake-up — se muestra solo mientras el servidor duerme */}
+      {isWaking && <WakingBanner slow={serverStatus === 'waking'} />}
+
       {/* Body */}
       <div className="flex flex-1 overflow-hidden relative">
-        {/* Overlay — solo mobile cuando drawer está abierto */}
         {drawerOpen && (
           <div
             className="md:hidden fixed inset-0 bg-black/30 z-10"
@@ -87,7 +132,6 @@ export default function App() {
           />
         )}
 
-        {/* Panel de documentos */}
         <div className={`
           fixed md:relative z-20 md:z-auto
           h-full md:h-auto
@@ -102,9 +146,41 @@ export default function App() {
           />
         </div>
 
-        {/* Chat — ocupa todo el ancho en mobile */}
-        <ChatPanel hasDocuments={documents.length > 0} />
+        <ChatPanel hasDocuments={documents.length > 0} serverReady={serverStatus === 'online'} />
       </div>
     </div>
+  )
+}
+
+function WakingBanner({ slow }) {
+  return (
+    <div className={`flex-shrink-0 flex items-center gap-3 px-4 py-2.5 text-sm
+      ${slow
+        ? 'bg-amber-50 border-b border-amber-200 text-amber-800'
+        : 'bg-indigo-50 border-b border-indigo-100 text-indigo-700'
+      }`}
+    >
+      <SpinnerIcon size={15} />
+      <span>
+        {slow
+          ? <>El servidor está <strong>despertando</strong> (puede tardar hasta 30 segundos en el plan gratuito). El chat se habilitará automáticamente.</>
+          : 'Conectando con el servidor…'
+        }
+      </span>
+    </div>
+  )
+}
+
+function SpinnerIcon({ size = 16, className = '' }) {
+  return (
+    <svg
+      width={size} height={size}
+      viewBox="0 0 24 24" fill="none"
+      stroke="currentColor" strokeWidth={2.5}
+      className={`animate-spin flex-shrink-0 ${className}`}
+    >
+      <circle cx="12" cy="12" r="10" strokeOpacity={0.25} />
+      <path d="M12 2a10 10 0 0 1 10 10" />
+    </svg>
   )
 }

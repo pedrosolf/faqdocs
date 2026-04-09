@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { api } from '../api'
 import ChunksAccordion from './ChunksAccordion'
 
-export default function ChatPanel({ hasDocuments }) {
+export default function ChatPanel({ hasDocuments, serverReady = true }) {
   const [messages, setMessages] = useState([])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
@@ -22,7 +22,7 @@ export default function ChatPanel({ hasDocuments }) {
 
   async function send() {
     const text = input.trim()
-    if (!text || loading) return
+    if (!text || loading || !serverReady) return
 
     // Limpiar input y poner foco ANTES de la llamada async
     setInput('')
@@ -139,14 +139,14 @@ export default function ChatPanel({ hasDocuments }) {
             value={input}
             onChange={e => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="Escribí tu pregunta… (Enter para enviar)"
+            placeholder={serverReady ? 'Escribí tu pregunta… (Enter para enviar)' : 'Esperando que el servidor despierte…'}
             rows={1}
-            className="flex-1 text-sm border border-gray-200 rounded-xl px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-indigo-400 placeholder-gray-400 resize-none bg-white max-h-32 overflow-y-auto"
+            className={`flex-1 text-sm border rounded-xl px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-indigo-400 placeholder-gray-400 resize-none bg-white max-h-32 overflow-y-auto transition-colors ${serverReady ? 'border-gray-200' : 'border-amber-200 bg-amber-50/50'}`}
             style={{ lineHeight: '1.5' }}
           />
           <button
             onClick={send}
-            disabled={loading || !input.trim()}
+            disabled={loading || !input.trim() || !serverReady}
             className="flex-shrink-0 w-10 h-10 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed rounded-xl flex items-center justify-center transition-colors"
           >
             {loading ? <Spinner /> : <SendIcon />}
